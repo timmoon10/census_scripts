@@ -14,11 +14,7 @@ def data_dir() -> Path:
     return root_dir / "data"
 
 def load_data(year: int) -> list[pandas.DataFrame]:
-    """Load MORG data for a year
-
-    Returns monthly data.
-
-    """
+    """Load MORG data for a year and split into monthly data"""
 
     # Load MORG data file
     data_file = data_dir() / "morg" / f"morg{year % 100:0>2}.dta"
@@ -45,8 +41,8 @@ def load_data(year: int) -> list[pandas.DataFrame]:
 def distribute_household_earnings(data: pandas.DataFrame) -> pandas.DataFrame:
     """Distribute weekly earnings within households
 
-    Set each individual's weekly earnings to the average earnings in
-    their household.
+    Adjust each individual's weekly earnings to the average earnings
+    in their household.
 
     """
 
@@ -75,13 +71,15 @@ def distribute_household_earnings(data: pandas.DataFrame) -> pandas.DataFrame:
     return data.assign(earnwke=personal_earnings)
 
 def mean_earnings(data: pandas.DataFrame) -> float:
+    """Mean weekly earnings"""
     data = data[["earnwke", "earnwt"]].to_numpy(dtype=np.double)
     return data.prod(axis=1).sum() / data[:,1].sum()
 
 def percentile_earnings(
     data: pandas.DataFrame,
     fractions: Iterable[float],
-) -> list[tuple[float, float]]:
+) -> list[float]:
+    """Weekly earning percentiles"""
 
     # Distribute earnings within households
     data = distribute_household_earnings(data)
@@ -100,7 +98,7 @@ def percentile_earnings(
             weights_cumsum,
             fraction * weights_cumsum[-1],
         )
-        out.append((fraction, data[idx, 0]))
+        out.append(data[idx, 0])
     return out
 
 def main() -> None:
@@ -117,7 +115,7 @@ def main() -> None:
             month += 1
             mean = mean_earnings(month_data)
             percentiles = percentile_earnings(month_data, fractions)
-            data.append([year, month, mean] + [earn for _, earn in percentiles])
+            data.append([year, month, mean] + list(percentiles))
 
     # Save results to file
     with open(result_file, "w") as f:
