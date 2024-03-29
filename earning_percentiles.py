@@ -5,13 +5,20 @@ from pathlib import Path
 
 import numpy as np
 import pandas
+import tqdm
 
 @functools.cache
 def data_dir() -> Path:
+    """Path to project data directory"""
     root_dir = Path(__file__).resolve().parent
     return root_dir / "data"
 
-def load_data(year: int) -> dict[int, pandas.DataFrame]:
+def load_data(year: int) -> list[pandas.DataFrame]:
+    """Load MORG data for a year
+
+    Returns monthly data.
+
+    """
 
     # Load MORG data file
     data_file = data_dir() / "morg" / f"morg{year % 100:0>2}.dta"
@@ -22,42 +29,50 @@ def load_data(year: int) -> dict[int, pandas.DataFrame]:
 
     # Filter out non-working age ranges
     year_data = year_data[year_data["age"] >= 16]
-    year_data = year_data[year_data["age"] <= 65]
+    year_data = year_data[year_data["age"] <= 70]
 
     # Clean data
     year_data = year_data[year_data["year"] == year]
     year_data["earnwke"].fillna(0, inplace=True)
     year_data["earnwt"].fillna(0, inplace=True)
 
+    # Split into monthly data
+    return [
+        year_data[year_data["intmonth"] == month]
+        for month in range(1, 13)
+    ]
 
-    # Extract per-month data
-    out = dict()
-    col_labels = list(year_data.columns)
-    household_col = col_labels.index("hhid")
-    earnings_col = col_labels.index("earnwke")
-    for month in range(1, 13):
-        month_data = year_data[year_data["intmonth"] == month]
+def distribute_household_earnings(data: pandas.DataFrame) -> pandas.DataFrame:
+    """Distribute weekly earnings within households
 
-        # Distribute income within households
-        households = month_data["hhid"]
-        household_earnings = collections.defaultdict(lambda: (0.0, 0))
-        for i in range(month_data.shape[0]):
-            household = households.iat[i]
-            earnings, count = household_earnings[household]
-            earnings += month_data.iat[i, earnings_col]
-            count += 1
-            household_earnings[household] = (earnings, count)
-        household_earnings = {
-            household: earnings / count
-            for household, (earnings, count) in household_earnings.items()
-        }
-        for i in range(month_data.shape[0]):
-            household = households.iat[i]
-            month_data.iat[i, earnings_col] = household_earnings[household]
+    Set each individual's weekly earnings to the average earnings in
+    their household.
 
-        out[month] = month_data
+    """
 
-    return out
+    # Compute total household incomes
+    households = data["hhid"].to_numpy(dtype=str)
+    personal_earnings = data["earnwke"].to_numpy(dtype=np.double)
+    household_earnings = collections.defaultdict(lambda: (0.0, 0))
+    for i in range(households.size):
+        earnings, count = household_earnings[households[i]]
+        household_earnings[households[i]] = (
+            earnings + personal_earnings[i],
+            count + 1,
+        )
+
+    # Compute average income within each household
+    household_earnings = {
+        household: earnings / count
+        for household, (earnings, count) in household_earnings.items()
+    }
+
+    # Set personal weekly earnings to household average
+    personal_earnings = [
+        household_earnings[households[i]]
+        for i in range(households.size)
+    ]
+    return data.assign(earnwke=personal_earnings)
 
 def mean_earnings(data: pandas.DataFrame) -> float:
     data = data[["earnwke", "earnwt"]].to_numpy(dtype=np.double)
@@ -67,6 +82,9 @@ def percentile_earnings(
     data: pandas.DataFrame,
     fractions: Iterable[float],
 ) -> list[tuple[float, float]]:
+
+    # Distribute earnings within households
+    data = distribute_household_earnings(data)
 
     # Sort data by earnings
     data = data[["earnwke", "earnwt"]].to_numpy(dtype=np.double)
@@ -87,20 +105,29 @@ def percentile_earnings(
 
 def main() -> None:
 
-    # Earning percentiles
-    fractions = (0.1, 0.25, 0.5, 0.75, 0.9)
+    # Options
+    fractions = (0.1, 0.25, 0.5, 0.75, 0.9)  # Earning percentiles
+    result_file = data_dir() / "earning_percentiles.csv"
 
-    # Print data for all months
-    print("# Weekly earning percentiles from NBER MORG")
-    print("# Year, Month, Mean, " + ", ".join(str(f) for f in fractions))
-    for year in range(1979, 2024):
-        data = load_data(year)
-        for month in range(1, 13):
-            earnings = percentile_earnings(data[month], fractions)
-            print(
-                f"{year}, {month}, {mean_earnings(data[month])}, "
-                + ", ".join(f"{earn}" for _, earn in earnings)
-            )
+    # Compute earning percentiles
+    data = []
+    for year in tqdm.tqdm(range(1979, 2024)):
+        year_data = load_data(year)
+        for month, month_data in enumerate(year_data):
+            month += 1
+            mean = mean_earnings(month_data)
+            percentiles = percentile_earnings(month_data, fractions)
+            data.append([year, month, mean] + [earn for _, earn in percentiles])
+
+    # Save results to file
+    with open(result_file, "w") as f:
+        f.write("# Weekly earning percentiles from NBER MORG\n")
+        f.write("# Year,Month,Mean,")
+        f.write(",".join(str(f) for f in fractions))
+        f.write("\n")
+        for month_data in data:
+            f.write(",".join(str(val) for val in month_data))
+            f.write("\n")
 
 if __name__ == "__main__":
     main()

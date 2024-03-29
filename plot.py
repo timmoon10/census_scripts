@@ -39,7 +39,7 @@ def main() -> None:
 
     # Plot
     x = np.array([year + (month-1) / 12 for year, month in times])
-    plt.plot(x, earnings[:, 5])
+    plt.plot(x, earnings[:, 3])
     plt.show()
 
 if __name__ == "__main__":
