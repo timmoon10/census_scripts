@@ -24,8 +24,8 @@ def load_data(year: int) -> list[pandas.DataFrame]:
     )
 
     # Filter out non-working age ranges
-    year_data = year_data[year_data["age"] >= 16]
-    year_data = year_data[year_data["age"] <= 70]
+    year_data = year_data[year_data["age"] >= 25]
+    year_data = year_data[year_data["age"] <= 60]
 
     # Clean data
     year_data = year_data[year_data["year"] == year]
@@ -81,9 +81,6 @@ def percentile_earnings(
 ) -> list[float]:
     """Weekly earning percentiles"""
 
-    # Distribute earnings within households
-    data = distribute_household_earnings(data)
-
     # Sort data by earnings
     data = data[["earnwke", "earnwt"]].to_numpy(dtype=np.double)
     data = data[data[:,0].argsort()]
@@ -104,7 +101,7 @@ def percentile_earnings(
 def main() -> None:
 
     # Options
-    fractions = (0.1, 0.25, 0.5, 0.75, 0.9)  # Earning percentiles
+    fractions = (0.1, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.75, 0.9)  # Earning percentiles
     result_file = data_dir() / "earning_percentiles.csv"
 
     # Compute earning percentiles
