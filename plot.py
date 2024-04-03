@@ -57,11 +57,18 @@ def load_earnings(
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument(
+        "--title", type=str, default="Weekly earnings", help="Plot title",
+    )
+    parser.add_argument(
         "--col", type=int, default=6, help="Column to plot (one-indexed)",
     )
     parser.add_argument(
         "--file", type=str, default="earning_percentiles.csv",
         help=f"Earnings data file in {data_dir()}",
+    )
+    parser.add_argument(
+        "--monthly", action="store_true",
+        help="Plot monthly data instead of yearly",
     )
     args = parser.parse_args()
     print('\n'.join(f'{key}: {val}' for key, val in vars(args).items()))
@@ -81,21 +88,34 @@ def main() -> None:
     for i, key in enumerate(month_earnings.keys()):
         month_earnings[key] *= base_cpi / cpi[key]
 
-    # Average earnings in year
-    year_earnings = collections.defaultdict(lambda: (0.0, 0))
-    for (year, month), val in month_earnings.items():
-        acc, count = year_earnings[year]
-        year_earnings[year] = (acc + val, count + 1)
-    year_earnings = {
-        year: acc / count
-        for year, (acc, count) in year_earnings.items()
-    }
+    # Construct plot data
+    if args.monthly:
+        pairs = sorted(list(month_earnings.items()))
+        x = np.array([year + (month-1) / 12 for (year, month), _ in pairs])
+        y = np.array([val for _, val in pairs])
+    else:
+        year_earnings = collections.defaultdict(lambda: (0.0, 0))
+        for (year, month), val in month_earnings.items():
+            acc, count = year_earnings[year]
+            year_earnings[year] = (acc + val, count + 1)
+        year_earnings = {
+            year: acc / count
+            for year, (acc, count) in year_earnings.items()
+        }
+        pairs = sorted(list(year_earnings.items()))
+        x = np.array([year for year, _ in pairs])
+        y = np.array([val for _, val in pairs])
 
     # Plot
-    pairs = sorted(list(year_earnings.items()))
-    x = np.array([year for year, _ in pairs])
-    y = np.array([val for _, val in pairs])
-    plt.plot(x, y)
+    fig, ax = plt.subplots()
+    ax.plot(x, y)
+    ax.set(
+        xlabel="Year",
+        ylabel="Inflation-adjusted 2023 dollars",
+        title=args.title,
+    )
+    ax.set_xlim(round(x[0]), round(x[-1]))
+    ax.set_ylim(0, (max(y) // 200) * 300)
     plt.show()
 
 if __name__ == "__main__":
