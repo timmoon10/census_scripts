@@ -55,6 +55,7 @@ def load_earnings(
     return { (time[0], time[1]): val for time, val in zip(times, values) }
 
 def parse_args() -> argparse.Namespace:
+    """Parse command-line arguments"""
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--title", type=str, default="Weekly earnings", help="Plot title",
