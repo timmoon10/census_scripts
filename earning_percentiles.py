@@ -101,7 +101,7 @@ def percentile_earnings(
 def main() -> None:
 
     # Options
-    fractions = (0.1, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.75, 0.9)  # Earning percentiles
+    fractions = [p / 100 for p in range(5, 100, 5)]  # Earning percentiles
     result_file = data_dir() / "earning_percentiles.csv"
 
     # Compute earning percentiles

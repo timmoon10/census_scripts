@@ -61,7 +61,7 @@ def parse_args() -> argparse.Namespace:
         "--title", type=str, default="Weekly earnings", help="Plot title",
     )
     parser.add_argument(
-        "--col", type=int, default=10, help="Column to plot (one-indexed)",
+        "--col", type=int, default=13, help="Column to plot (one-indexed)",
     )
     parser.add_argument(
         "--file", type=str, default="earning_percentiles.csv",
