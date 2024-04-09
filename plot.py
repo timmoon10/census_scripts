@@ -1,5 +1,6 @@
 import argparse
 import collections
+from collections.abc import Iterable
 import functools
 from pathlib import Path
 
@@ -31,7 +32,7 @@ def load_cpi() -> dict[tuple[int, int], float]:
 def load_earnings(
     data_file: Path,
     *,
-    col: int,
+    cols: Iterable[int],
 ) -> dict[tuple[int, int], float]:
     """Get monthly nominal earnings
 
@@ -40,11 +41,11 @@ def load_earnings(
 
     """
     data_file = data_dir() / data_file
-    values = np.loadtxt(
+    data = np.loadtxt(
         data_file,
         dtype=np.double,
         delimiter=",",
-        usecols=col-1,
+        usecols=[col-1 for col in cols],
     )
     times = np.loadtxt(
         data_file,
@@ -52,7 +53,7 @@ def load_earnings(
         delimiter=",",
         usecols=(0,1),
     )
-    return { (time[0], time[1]): val for time, val in zip(times, values) }
+    return { (time[0], time[1]): vals for time, vals in zip(times, data) }
 
 def parse_args() -> argparse.Namespace:
     """Parse command-line arguments"""
@@ -61,7 +62,8 @@ def parse_args() -> argparse.Namespace:
         "--title", type=str, default="Weekly earnings", help="Plot title",
     )
     parser.add_argument(
-        "--col", type=int, default=13, help="Column to plot (one-indexed)",
+        "--cols", type=int, nargs="+", default=[13],
+        help="Columns to plot (one-indexed)",
     )
     parser.add_argument(
         "--file", type=str, default="earning_percentiles.csv",
@@ -70,6 +72,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--monthly", action="store_true",
         help="Plot monthly data instead of yearly",
+    )
+    parser.add_argument(
+        "--legend", type=str, nargs="+", default=[],
+        help="Legend labels",
     )
     args = parser.parse_args()
     print('\n'.join(f'{key}: {val}' for key, val in vars(args).items()))
@@ -81,7 +87,7 @@ def main() -> None:
     args = parse_args()
 
     # Load earnings data
-    month_earnings = load_earnings(data_dir() / args.file, col=args.col)
+    month_earnings = load_earnings(data_dir() / args.file, cols=args.cols)
 
     # Adjust for inflation
     cpi = load_cpi()
@@ -90,40 +96,48 @@ def main() -> None:
         month_earnings[key] *= base_cpi / cpi[key]
 
     # Compute yearly earnings data
-    year_earnings = collections.defaultdict(lambda: (0.0, 0))
-    for (year, month), val in month_earnings.items():
+    year_earnings = collections.defaultdict(
+        lambda: (0.0, np.zeros(len(args.cols)))
+    )
+    for (year, month), vals in month_earnings.items():
         acc, count = year_earnings[year]
-        year_earnings[year] = (acc + val, count + 1)
+        year_earnings[year] = (acc + vals, count + 1)
     year_earnings = {
         year: acc / count
         for year, (acc, count) in year_earnings.items()
     }
 
-    # Print change since 1990
-    print(f"2023/1990 ratio: {year_earnings[2023] / year_earnings[1990]}")
-    print(f"2023/2000 ratio: {year_earnings[2023] / year_earnings[2000]}")
-    print(f"2023/2010 ratio: {year_earnings[2023] / year_earnings[2010]}")
-
     # Construct plot data
     if args.monthly:
         pairs = sorted(list(month_earnings.items()))
         x = np.array([year + (month-1) / 12 for (year, month), _ in pairs])
-        y = np.array([val for _, val in pairs])
+        ys = [
+            np.array([vals[i] for _, vals in pairs])
+            for i in range(len(args.cols))
+        ]
     else:
         pairs = sorted(list(year_earnings.items()))
         x = np.array([year for year, _ in pairs])
-        y = np.array([val for _, val in pairs])
+        ys = [
+            np.array([vals[i] for _, vals in pairs])
+            for i in range(len(args.cols))
+        ]
 
     # Plot
     fig, ax = plt.subplots()
-    ax.plot(x, y)
+    for i, y in enumerate(ys):
+        line, = ax.plot(x, y)
+        if args.legend:
+            line.set_label(args.legend[i])
     ax.set(
         xlabel="Year",
         ylabel="Inflation-adjusted 2023 dollars",
         title=args.title,
     )
     ax.set_xlim(round(x[0]), round(x[-1]))
-    ax.set_ylim(0, ((max(y) + 149) // 150) * 200)
+    ax.set_ylim(0, ((max(max(y) for y in ys) + 149) // 150) * 200)
+    if args.legend:
+        ax.legend()
     plt.show()
 
 if __name__ == "__main__":
