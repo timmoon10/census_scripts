@@ -77,6 +77,10 @@ def parse_args() -> argparse.Namespace:
         "--legend", type=str, nargs="+", default=[],
         help="Legend labels",
     )
+    parser.add_argument(
+        "--print-years", type=int, nargs="+", default=[],
+        help="Print results for specific years",
+    )
     args = parser.parse_args()
     print('\n'.join(f'{key}: {val}' for key, val in vars(args).items()))
     return args
@@ -92,7 +96,7 @@ def main() -> None:
     # Adjust for inflation
     cpi = load_cpi()
     base_cpi = 449.3  # 2023 average
-    for i, key in enumerate(month_earnings.keys()):
+    for key in month_earnings.keys():
         month_earnings[key] *= base_cpi / cpi[key]
 
     # Compute yearly earnings data
@@ -106,6 +110,14 @@ def main() -> None:
         year: acc / count
         for year, (acc, count) in year_earnings.items()
     }
+
+    # Print yearly data
+    if args.print_years:
+        print("# Column," + ",".join(str(year) for year in args.print_years))
+        for i in range(len(args.cols)):
+            name = args.legend[i] if args.legend else str(args.cols[i])
+            data = [year_earnings[year][i] for year in args.print_years]
+            print(name + "," + ",".join(f"{val:0.2f}" for val in data))
 
     # Construct plot data
     if args.monthly:
