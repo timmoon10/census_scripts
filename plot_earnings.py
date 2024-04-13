@@ -1,17 +1,12 @@
 import argparse
 import collections
 from collections.abc import Iterable
-import functools
-from pathlib import Path
+import pathlib
 
 import matplotlib.pyplot as plt
 import numpy as np
 
-@functools.cache
-def data_dir() -> Path:
-    """Path to project data directory"""
-    root_dir = Path(__file__).resolve().parent
-    return root_dir / "data"
+from utils import data_dir, results_dir
 
 def load_cpi() -> dict[tuple[int, int], float]:
     """Get monthly CPI
@@ -30,7 +25,7 @@ def load_cpi() -> dict[tuple[int, int], float]:
     return out
 
 def load_earnings(
-    data_file: Path,
+    data_file: pathlib.Path,
     *,
     cols: Iterable[int],
 ) -> dict[tuple[int, int], float]:
@@ -40,7 +35,6 @@ def load_earnings(
     tuples of the year and month.
 
     """
-    data_file = data_dir() / data_file
     data = np.loadtxt(
         data_file,
         dtype=np.double,
@@ -66,8 +60,12 @@ def parse_args() -> argparse.Namespace:
         help="Columns to plot (one-indexed)",
     )
     parser.add_argument(
-        "--file", type=str, default="earning_percentiles.csv",
+        "--data-file", type=str, default="earning_percentiles.csv",
         help=f"Earnings data file in {data_dir()}",
+    )
+    parser.add_argument(
+        "--plot-file", type=str, default=None,
+        help=f"Output plot to image file in {results_dir()} instead of showing",
     )
     parser.add_argument(
         "--monthly", action="store_true",
@@ -91,7 +89,7 @@ def main() -> None:
     args = parse_args()
 
     # Load earnings data
-    month_earnings = load_earnings(data_dir() / args.file, cols=args.cols)
+    month_earnings = load_earnings(data_dir() / args.data_file, cols=args.cols)
 
     # Adjust for inflation
     cpi = load_cpi()
@@ -135,7 +133,7 @@ def main() -> None:
             for i in range(len(args.cols))
         ]
 
-    # Plot
+    # Construct plot
     fig, ax = plt.subplots()
     for i, y in enumerate(ys):
         line, = ax.plot(x, y)
@@ -150,7 +148,12 @@ def main() -> None:
     ax.set_ylim(0, ((max(max(y) for y in ys) + 149) // 150) * 200)
     if args.legend:
         ax.legend()
-    plt.show()
+
+    # Save image file or show plot
+    if args.plot_file:
+        plt.savefig(results_dir() / args.plot_file)
+    else:
+        plt.show()
 
 if __name__ == "__main__":
     main()

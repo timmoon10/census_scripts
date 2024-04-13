@@ -1,17 +1,11 @@
 import collections
 from collections.abc import Iterable
-import functools
-from pathlib import Path
 
 import numpy as np
 import pandas
 import tqdm
 
-@functools.cache
-def data_dir() -> Path:
-    """Path to project data directory"""
-    root_dir = Path(__file__).resolve().parent
-    return root_dir / "data"
+from utils import data_dir
 
 def load_data(year: int) -> list[pandas.DataFrame]:
     """Load MORG data for a year and split into monthly data"""
