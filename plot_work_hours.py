@@ -9,28 +9,12 @@ import numpy as np
 
 from utils import data_dir, results_dir
 
-def load_cpi() -> dict[tuple[int, int], float]:
-    """Get monthly CPI
-
-    Returns a dictionary where the keys are tuples of the year and
-    month.
-
-    """
-    data_file = data_dir() / "cpi_u_rs.csv"
-    values = np.loadtxt(data_file, delimiter=",")[:,1:-1]
-    years = np.loadtxt(data_file, dtype=int, delimiter=",", usecols=0)
-    out = dict()
-    for i, year in enumerate(years):
-        for j in range(12):
-            out[(year,j+1)] = values[i,j]
-    return out
-
-def load_earnings(
+def load_work_hour_percentage_data(
     data_file: pathlib.Path,
     *,
     cols: Iterable[int],
 ) -> dict[tuple[int, int], float]:
-    """Get monthly nominal earnings
+    """Get monthly employment rates
 
     Column is one-indexed. Returns a dictionary where the keys are
     tuples of the year and month.
@@ -42,6 +26,7 @@ def load_earnings(
         delimiter=",",
         usecols=[col-1 for col in cols],
     )
+    data *= 100  # Convert to percentages
     times = np.loadtxt(
         data_file,
         dtype=np.int64,
@@ -54,15 +39,15 @@ def parse_args() -> argparse.Namespace:
     """Parse command-line arguments"""
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--title", type=str, default="Weekly earnings", help="Plot title",
+        "--title", type=str, default="Employment rate", help="Plot title",
     )
     parser.add_argument(
-        "--cols", type=int, nargs="+", default=[13],
+        "--cols", type=int, nargs="+", default=[5],
         help="Columns to plot (one-indexed)",
     )
     parser.add_argument(
-        "--data-file", type=str, default="earning_percentiles.csv",
-        help=f"Earnings data file in {data_dir()}",
+        "--data-file", type=str, default="work_hours.csv",
+        help=f"Work hour data file in {data_dir()}",
     )
     parser.add_argument(
         "--plot-file", type=str, default=None,
@@ -89,25 +74,22 @@ def main() -> None:
     # Command-line arguments
     args = parse_args()
 
-    # Load earnings data
-    month_earnings = load_earnings(data_dir() / args.data_file, cols=args.cols)
+    # Load work hour data
+    month_percents = load_work_hour_percentage_data(
+        data_dir() / args.data_file,
+        cols=args.cols,
+    )
 
-    # Adjust for inflation
-    cpi = load_cpi()
-    base_cpi = 449.3  # 2023 average
-    for key in month_earnings.keys():
-        month_earnings[key] *= base_cpi / cpi[key]
-
-    # Compute yearly earnings data
-    year_earnings = collections.defaultdict(
+    # Compute yearly work hour data
+    year_percents = collections.defaultdict(
         lambda: (0.0, np.zeros(len(args.cols)))
     )
-    for (year, month), vals in month_earnings.items():
-        acc, count = year_earnings[year]
-        year_earnings[year] = (acc + vals, count + 1)
-    year_earnings = {
+    for (year, month), vals in month_percents.items():
+        acc, count = year_percents[year]
+        year_percents[year] = (acc + vals, count + 1)
+    year_percents = {
         year: acc / count
-        for year, (acc, count) in year_earnings.items()
+        for year, (acc, count) in year_percents.items()
     }
 
     # Print yearly data
@@ -115,19 +97,19 @@ def main() -> None:
         print("# Column," + ",".join(str(year) for year in args.print_years))
         for i in range(len(args.cols)):
             name = args.legend[i] if args.legend else str(args.cols[i])
-            data = [year_earnings[year][i] for year in args.print_years]
-            print(name + "," + ",".join(f"{val:0.2f}" for val in data))
+            data = [year_percents[year][i] for year in args.print_years]
+            print(name + "," + ",".join(f"{val:0.4f}" for val in data))
 
     # Construct plot data
     if args.monthly:
-        pairs = sorted(list(month_earnings.items()))
+        pairs = sorted(list(month_percents.items()))
         x = np.array([year + (month-1) / 12 for (year, month), _ in pairs])
         ys = [
             np.array([vals[i] for _, vals in pairs])
             for i in range(len(args.cols))
         ]
     else:
-        pairs = sorted(list(year_earnings.items()))
+        pairs = sorted(list(year_percents.items()))
         x = np.array([year for year, _ in pairs])
         ys = [
             np.array([vals[i] for _, vals in pairs])
@@ -142,11 +124,11 @@ def main() -> None:
             line.set_label(args.legend[i])
     ax.set(
         xlabel="Year",
-        ylabel="Inflation-adjusted 2023 dollars",
+        ylabel="Percent",
         title=args.title,
     )
     ax.set_xlim(math.floor(x[0]), math.ceil(x[-1]))
-    ax.set_ylim(0, ((max(max(y) for y in ys) + 149) // 150) * 200)
+    ax.set_ylim(0, 100)
     if args.legend:
         ax.legend()
 
